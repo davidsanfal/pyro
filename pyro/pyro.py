@@ -17,8 +17,44 @@ class Pyro():
         self.headers = headers
         self.commands = []
         self.swarm = {}
+        self.conected = False
+
+    def _enter(self, cmds):
+        cmds.pop(0).decode('utf-8')
+        peer = uuid.UUID(bytes=cmds.pop(0))
+        name = cmds.pop(0).decode('utf-8')
+        self.swarm['{}-{}'.format(name, peer)] = {
+            'peer': peer,
+            'name': name,
+            'headers': json.loads(cmds.pop(0).decode('utf-8'))
+        }
+
+    def _exit(self, cmds):
+        cmds.pop(0).decode('utf-8')
+        peer = uuid.UUID(bytes=cmds.pop(0))
+        name = cmds.pop(0).decode('utf-8')
+        self.swarm.pop('{}-{}'.format(name, peer))
+
+    def _join(self, cmds):
+        pass
+
+    def _leave(self, cmds):
+        pass
+
+    def _whister(self, cmds):
+        pass
+
+    def _shout(self, cmds):
+        cmds.pop(0)
+        self.commands.append([uuid.UUID(bytes=cmds.pop(0)),
+                              cmds.pop(0).decode('utf-8'),
+                              cmds.pop(0).decode('utf-8'),
+                              cmds.pop(0).decode('utf-8')])
+        print(self.commands[-1])
 
     def connect(self):
+        self.conected = True
+
         def _chat_task(ctx, pipe):
             n = Pyre(self.name)
             for header_k, header_v in self.headers:
@@ -28,54 +64,26 @@ class Pyro():
             poller = zmq.Poller()
             poller.register(pipe, zmq.POLLIN)
             poller.register(n.socket(), zmq.POLLIN)
-            while(True):
+            while self.conected:
                 items = dict(poller.poll())
-                print(n.socket(), items)
+                # print(n.socket(), items)
                 if pipe in items and items[pipe] == zmq.POLLIN:
                     message = pipe.recv()
-                    # message to quit
-                    if message.decode('utf-8') == "$$STOP":
-                        break
-                    # print("CHAT_TASK: %s" % message)
                     n.shouts(self.channel, message.decode('utf-8'))
                 else:
                     cmds = n.recv()
-                    msg_type = cmds.pop(0).decode('utf-8')
-                    peer = uuid.UUID(bytes=cmds.pop(0))
-                    name = cmds.pop(0).decode('utf-8')
-                    msg_group = None
-                    msg = None
-                    if msg_type == "SHOUT":
-                        msg_group = cmds.pop(0)
-                    elif msg_type == "ENTER":
-                        self.swarm['{}-{}'.format(name, peer)] = {
-                            'peer': peer,
-                            'name': name,
-                            'headers': json.loads(cmds.pop(0).decode('utf-8'))
-                        }
-                    elif msg_type == "EXIT":
-                        self.swarm.pop('{}-{}'.format(name, peer))
-                        print(self.swarm)
-                    else:
-                        print("msg_type: ", msg_type)
-                        print("peer: ", peer)
-                    if cmds:
-                        msg = cmds.pop(0).decode('utf-8')
-                    self.commands.append([name, peer, msg_group, msg])
+                    msg_type = cmds[0].decode('utf-8')
+                    getattr(self, '_{}'.format(msg_type.lower()))(cmds)
             n.stop()
         ctx = zmq.Context()
         chat_pipe = zhelper.zthread_fork(ctx, _chat_task)
-        while True:
+        while self.conected:
             try:
                 msg = input()
-                for c in self.commands:
-                    print(c)
-                print(self.swarm)
                 chat_pipe.send(msg.encode('utf_8'))
             except (KeyboardInterrupt, SystemExit):
-                break
-        chat_pipe.send("$$STOP".encode('utf_8'))
-        print("FINISHED")
+                self.conected = False
+                chat_pipe.send(''.encode('utf_8'))
 
 
 if __name__ == '__main__':
