@@ -53,6 +53,12 @@ class Pyro():
                             'name': name,
                             'headers': json.loads(cmds.pop(0).decode('utf-8'))
                         }
+                    elif msg_type == "EXIT":
+                        self.swarm.pop('{}-{}'.format(name, peer))
+                        print(self.swarm)
+                    else:
+                        print("msg_type: ", msg_type)
+                        print("peer: ", peer)
                     if cmds:
                         msg = cmds.pop(0).decode('utf-8')
                     self.commands.append([name, peer, msg_group, msg])
