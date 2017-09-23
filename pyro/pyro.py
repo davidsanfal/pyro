@@ -17,7 +17,7 @@ class Pyro():
         self.headers = headers
         self.commands = []
         self.swarm = {}
-        self.conected = False
+        self.connected = False
 
     def _enter(self, cmds):
         cmds.pop(0).decode('utf-8')
@@ -53,7 +53,7 @@ class Pyro():
         print(self.commands[-1])
 
     def connect(self):
-        self.conected = True
+        self.connected = True
 
         def _chat_task(ctx, pipe):
             n = Pyre(self.name)
@@ -64,11 +64,13 @@ class Pyro():
             poller = zmq.Poller()
             poller.register(pipe, zmq.POLLIN)
             poller.register(n.socket(), zmq.POLLIN)
-            while self.conected:
+            while self.connected:
                 items = dict(poller.poll())
                 # print(n.socket(), items)
                 if pipe in items and items[pipe] == zmq.POLLIN:
                     message = pipe.recv()
+                    if not self.connected:
+                        break
                     n.shouts(self.channel, message.decode('utf-8'))
                 else:
                     cmds = n.recv()
@@ -76,14 +78,16 @@ class Pyro():
                     getattr(self, '_{}'.format(msg_type.lower()))(cmds)
             n.stop()
         ctx = zmq.Context()
-        chat_pipe = zhelper.zthread_fork(ctx, _chat_task)
-        while self.conected:
+        self.chat_pipe = zhelper.zthread_fork(ctx, _chat_task)
+
+    def loop(self):
+        while self.connected:
             try:
                 msg = input()
-                chat_pipe.send(msg.encode('utf_8'))
+                self.chat_pipe.send(msg.encode('utf_8'))
             except (KeyboardInterrupt, SystemExit):
-                self.conected = False
-                chat_pipe.send(''.encode('utf_8'))
+                self.connected = False
+                self.chat_pipe.send(''.encode('utf_8'))
 
 
 if __name__ == '__main__':
@@ -91,3 +95,4 @@ if __name__ == '__main__':
                 channel='pyro_channel',
                 headers=(("CHAT_Header1", "example header1"),))
     pyro.connect()
+    pyro.loop()
