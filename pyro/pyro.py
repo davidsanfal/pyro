@@ -52,10 +52,9 @@ class Pyro():
                               cmds.pop(0).decode('utf-8')])
         print(self.commands[-1])
 
-    def connect(self):
-        self.connected = True
-
-        def _chat_task(ctx, pipe):
+    @property
+    def _task(self):
+        def _t(ctx, pipe):
             n = Pyre(self.name)
             for header_k, header_v in self.headers:
                 n.set_header(header_k, header_v)
@@ -66,7 +65,6 @@ class Pyro():
             poller.register(n.socket(), zmq.POLLIN)
             while self.connected:
                 items = dict(poller.poll())
-                # print(n.socket(), items)
                 if pipe in items and items[pipe] == zmq.POLLIN:
                     message = pipe.recv()
                     if not self.connected:
@@ -77,8 +75,12 @@ class Pyro():
                     msg_type = cmds[0].decode('utf-8')
                     getattr(self, '_{}'.format(msg_type.lower()))(cmds)
             n.stop()
+        return _t
+
+    def connect(self):
+        self.connected = True
         ctx = zmq.Context()
-        self.chat_pipe = zhelper.zthread_fork(ctx, _chat_task)
+        self.chat_pipe = zhelper.zthread_fork(ctx, self._task)
 
     def loop(self):
         while self.connected:
